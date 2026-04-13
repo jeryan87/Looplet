@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { MainStackParamList } from '../../navigation/types';
 import { useLoopContext } from '../../contexts/LoopContext';
 import { useLetter, createDraftLetter } from '../../hooks/useLetter';
@@ -75,21 +76,31 @@ export default function HomeScreen({ navigation }: Props) {
 
     setUploadingPhoto(true);
     const asset = result.assets[0];
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setUploadingPhoto(false); return; }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setUploadingPhoto(false); return; }
 
-    const ext = asset.uri.split('.').pop() ?? 'jpg';
-    const storagePath = `${user.id}/${letterId}/${Date.now()}.${ext}`;
-    const response = await fetch(asset.uri);
-    const blob = await response.blob();
+    const manipulated = await ImageManipulator.manipulateAsync(
+      asset.uri,
+      [{ resize: { width: 1200 } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    const storagePath = `${session.user.id}/${letterId}/${Date.now()}.jpg`;
+    const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.responseType = 'arraybuffer';
+      xhr.onload = () => resolve(xhr.response as ArrayBuffer);
+      xhr.onerror = () => reject(new Error('XHR read failed'));
+      xhr.open('GET', manipulated.uri);
+      xhr.send();
+    });
 
     const { error: uploadError } = await supabase.storage
       .from('letter-photos')
-      .upload(storagePath, blob, { contentType: `image/${ext}` });
+      .upload(storagePath, arrayBuffer, { contentType: 'image/jpeg' });
 
     if (uploadError) {
       setUploadingPhoto(false);
-      Alert.alert('Upload failed', 'Please try again.');
+      Alert.alert('Upload failed', uploadError.message);
       return;
     }
 
@@ -338,7 +349,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.sm,
   },
-  photoRow: { flexDirection: 'row' },
+  photoRow: { flexDirection: 'row', paddingTop: 8 },
   photoThumb: {
     width: THUMB_SIZE,
     height: THUMB_SIZE,
