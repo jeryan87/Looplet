@@ -31,7 +31,9 @@ export default function PromptPickerScreen({ navigation, route }: Props) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.back}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.counter}>{filledCount} of 3 chosen</Text>
+        <Text style={styles.counter}>
+          {filledCount === 0 ? 'up to 3' : `${filledCount} chosen (up to 3)`}
+        </Text>
       </View>
 
       <Text style={styles.title}>What do you want to share?</Text>

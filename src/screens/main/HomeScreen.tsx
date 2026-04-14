@@ -24,6 +24,90 @@ import { colors, typography, spacing, radius } from '../../constants/theme';
 const MAX_PHOTOS = 5;
 const THUMB_SIZE = 72;
 
+// ── Intro/Outro row component ────────────────────────────────────────────────
+function IntroOutroRow({
+  label, value, visible, hasLetter, onPress, onToggle,
+}: {
+  label: string;
+  value: string;
+  visible: boolean;
+  hasLetter: boolean;
+  onPress: () => void;
+  onToggle: () => void;
+}) {
+  return (
+    <View style={introStyles.card}>
+      <TouchableOpacity
+        style={introStyles.row}
+        onPress={onPress}
+        activeOpacity={0.7}
+      >
+        <View style={introStyles.content}>
+          <Text style={introStyles.label}>{label}</Text>
+          <Text
+            numberOfLines={1}
+            style={value ? introStyles.preview : introStyles.placeholder}
+          >
+            {value || `Add a ${label.toLowerCase()} paragraph…`}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={hasLetter ? onToggle : undefined}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[introStyles.pill, visible ? introStyles.pillIncluded : introStyles.pillExcluded]}
+          activeOpacity={0.7}
+        >
+          <Text style={[introStyles.pillText, visible ? introStyles.pillTextIncluded : introStyles.pillTextExcluded]}>
+            {visible ? 'Include' : 'Exclude'}
+          </Text>
+        </TouchableOpacity>
+        <Text style={introStyles.chevron}>›</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const introStyles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  content: { flex: 1, marginRight: spacing.sm },
+  label: {
+    fontSize: typography.xs,
+    fontWeight: '600',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  preview: { fontSize: typography.sm, color: colors.textPrimary },
+  placeholder: { fontSize: typography.sm, color: colors.textMuted, fontStyle: 'italic' },
+  pill: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    marginRight: spacing.sm,
+  },
+  pillIncluded: { backgroundColor: colors.primary },
+  pillExcluded: { backgroundColor: colors.borderLight },
+  pillText: { fontSize: typography.xs, fontWeight: '600' },
+  pillTextIncluded: { color: colors.textInverse },
+  pillTextExcluded: { color: colors.textMuted },
+  chevron: { fontSize: typography.lg, color: colors.textMuted },
+});
+
+// ── HomeScreen ───────────────────────────────────────────────────────────────
 type Props = NativeStackScreenProps<MainStackParamList, 'Home'>;
 
 const CADENCE_LABEL: Record<string, string> = {
@@ -48,7 +132,7 @@ export default function HomeScreen({ navigation }: Props) {
   const responses = letter?.prompt_responses ?? {};
   const filledPromptIds = Object.keys(responses);
   const filledCount = filledPromptIds.length;
-  const canSend = filledCount === 3;
+  const canSend = filledCount >= 1;
 
   function getPhotoUrl(storagePath: string): string {
     const { data } = supabase.storage.from('letter-photos').getPublicUrl(storagePath);
@@ -147,6 +231,20 @@ export default function HomeScreen({ navigation }: Props) {
     navigation.navigate('WriteResponse', { letterId: letter.id, promptId });
   }
 
+  async function handleEditIntroOutro(field: 'intro' | 'outro') {
+    const letterId = await ensureDraft();
+    if (!letterId) return;
+    navigation.navigate('IntroOutro', { letterId, field });
+  }
+
+  async function handleToggleField(field: 'intro' | 'outro') {
+    if (!letter) return;
+    const column = field === 'intro' ? 'show_intro' : 'show_outro';
+    const currentValue = field === 'intro' ? letter.show_intro : letter.show_outro;
+    await supabase.from('letters').update({ [column]: !currentValue }).eq('id', letter.id);
+    await refetch();
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -162,16 +260,21 @@ export default function HomeScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={styles.loopName}>{loop?.name ?? 'Your newsletter'}</Text>
-            <Text style={styles.cadenceLabel}>
-              Sent {CADENCE_LABEL[loop?.cadence ?? 'weekly']}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
+          <Text style={styles.loopName}>{loop?.name ?? 'Your newsletter'}</Text>
+          <Text style={styles.cadenceLabel}>
+            Sent {CADENCE_LABEL[loop?.cadence ?? 'weekly']}
+          </Text>
         </View>
+
+        {/* Opening (intro) */}
+        <IntroOutroRow
+          label="Opening"
+          value={letter?.intro ?? ''}
+          visible={letter?.show_intro ?? true}
+          hasLetter={!!letter}
+          onPress={() => handleEditIntroOutro('intro')}
+          onToggle={() => handleToggleField('intro')}
+        />
 
         {/* This week's letter */}
         <View style={styles.section}>
@@ -224,6 +327,16 @@ export default function HomeScreen({ navigation }: Props) {
           )}
         </View>
 
+        {/* Closing (outro) */}
+        <IntroOutroRow
+          label="Closing"
+          value={letter?.outro ?? ''}
+          visible={letter?.show_outro ?? true}
+          hasLetter={!!letter}
+          onPress={() => handleEditIntroOutro('outro')}
+          onToggle={() => handleToggleField('outro')}
+        />
+
         {/* Photos */}
         <View style={styles.photoSection}>
           <Text style={styles.photoSectionTitle}>
@@ -270,7 +383,7 @@ export default function HomeScreen({ navigation }: Props) {
           activeOpacity={0.85}
         >
           <Text style={[styles.sendButtonText, !canSend && styles.sendButtonTextDisabled]}>
-            {canSend ? 'Preview & Send' : `${filledCount} of 3 moments written`}
+            {canSend ? 'Preview & Send' : 'Add at least one moment to send'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -283,13 +396,9 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   scroll: { flexGrow: 1, paddingHorizontal: spacing.xl, paddingBottom: spacing.xxxl },
   header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
     paddingTop: spacing.lg,
     marginBottom: spacing.xl,
   },
-  headerText: { flex: 1, marginRight: spacing.md },
   loopName: {
     fontSize: typography.xl,
     fontWeight: '700',
@@ -297,7 +406,6 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   cadenceLabel: { fontSize: typography.sm, color: colors.textMuted },
-  settingsIcon: { fontSize: 22, color: colors.textMuted, paddingTop: 2 },
   section: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,

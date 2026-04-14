@@ -6,11 +6,12 @@ import { colors } from '../constants/theme';
 import HomeScreen from '../screens/main/HomeScreen';
 import NewLetterScreen from '../screens/main/NewLetterScreen';
 import WriteLetterScreen from '../screens/main/WriteLetterScreen';
+import IntroOutroScreen from '../screens/main/IntroOutroScreen';
 import PreviewScreen from '../screens/main/PreviewScreen';
 import SendScreen from '../screens/main/SendScreen';
-import ArchiveScreen from '../screens/main/ArchiveScreen';
-import SettingsScreen from '../screens/settings/SettingsScreen';
 
+// NOTE: This file is superseded by MainTabNavigator — kept only so the file
+// remains valid TypeScript. Archive and Settings now live in their own tab stacks.
 const Stack = createNativeStackNavigator<MainStackParamList>();
 
 export default function MainStack() {
@@ -26,10 +27,9 @@ export default function MainStack() {
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="PromptPicker" component={NewLetterScreen} />
       <Stack.Screen name="WriteResponse" component={WriteLetterScreen} />
+      <Stack.Screen name="IntroOutro" component={IntroOutroScreen} />
       <Stack.Screen name="Preview" component={PreviewScreen} />
       <Stack.Screen name="Send" component={SendScreen} />
-      <Stack.Screen name="Archive" component={ArchiveScreen} />
-      <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
   );
 }

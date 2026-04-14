@@ -10,7 +10,7 @@ import { colors } from '../constants/theme';
 
 import OnboardingStack from './OnboardingStack';
 import SetupStack from './SetupStack';
-import MainStack from './MainStack';
+import MainTabNavigator from './MainTabNavigator';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -37,7 +37,7 @@ export default function RootNavigator() {
           ) : loop === null ? (
             <Stack.Screen name="Setup" component={SetupStack} />
           ) : (
-            <Stack.Screen name="Main" component={MainStack} />
+            <Stack.Screen name="Main" component={MainTabNavigator} />
           )}
         </Stack.Navigator>
       </NavigationContainer>

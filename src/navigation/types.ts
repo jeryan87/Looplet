@@ -10,14 +10,31 @@ export type SetupStackParamList = {
   SetCadence: { loopId: string };
 };
 
+// Home tab stack — the letter-writing flow
 export type MainStackParamList = {
   Home: undefined;
   PromptPicker: { letterId: string };
   WriteResponse: { letterId: string; promptId: string };
+  IntroOutro: { letterId: string; field: 'intro' | 'outro' };
   Preview: { letterId: string };
   Send: { letterId: string };
+};
+
+// Letters tab stack
+export type LettersStackParamList = {
   Archive: undefined;
+};
+
+// Settings tab stack
+export type SettingsStackParamList = {
   Settings: undefined;
+};
+
+// Bottom tab navigator
+export type MainTabParamList = {
+  HomeTab: undefined;
+  LettersTab: undefined;
+  SettingsTab: undefined;
 };
 
 export type RootStackParamList = {

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -58,6 +59,22 @@ export default function PreviewScreen({ navigation, route }: Props) {
   });
 
   const filledPrompts = PROMPTS.filter((p) => letter.prompt_responses[p.id]);
+  const filledCount = filledPrompts.length;
+
+  function handleSend() {
+    if (filledCount < 3) {
+      Alert.alert(
+        'Not quite full',
+        `You've only filled in ${filledCount} of 3 prompts. You can always add more before sending — or send it as is.`,
+        [
+          { text: 'Keep writing', style: 'cancel' },
+          { text: 'Send anyway', onPress: () => navigation.navigate('Send', { letterId }) },
+        ]
+      );
+    } else {
+      navigation.navigate('Send', { letterId });
+    }
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -80,7 +97,12 @@ export default function PreviewScreen({ navigation, route }: Props) {
 
           {/* Body */}
           <View style={styles.emailBody}>
-            <Text style={styles.greeting}>Hi there,</Text>
+            {/* Intro */}
+            {letter.show_intro && !!letter.intro && (
+              <View style={styles.introOutroSection}>
+                <Text style={styles.introOutroText}>{letter.intro}</Text>
+              </View>
+            )}
 
             {filledPrompts.map((prompt) => {
               const promptText = formatPrompt(
@@ -97,6 +119,13 @@ export default function PreviewScreen({ navigation, route }: Props) {
                 </View>
               );
             })}
+
+            {/* Outro */}
+            {letter.show_outro && !!letter.outro && (
+              <View style={styles.introOutroSection}>
+                <Text style={styles.introOutroText}>{letter.outro}</Text>
+              </View>
+            )}
 
             {/* Photos */}
             {photos.length > 0 && (
@@ -125,7 +154,7 @@ export default function PreviewScreen({ navigation, route }: Props) {
       <View style={styles.sendBar}>
         <TouchableOpacity
           style={styles.sendButton}
-          onPress={() => navigation.navigate('Send', { letterId })}
+          onPress={handleSend}
           activeOpacity={0.85}
         >
           <Text style={styles.sendButtonText}>Send it →</Text>
@@ -166,13 +195,17 @@ const styles = StyleSheet.create({
   emailDate: { fontSize: typography.xs, color: 'rgba(255,255,255,0.7)', marginBottom: 4 },
   emailLoopName: { fontSize: typography.xl, fontWeight: '700', color: '#fff' },
   emailBody: { padding: spacing.xl },
-  greeting: {
-    fontSize: typography.base,
-    color: colors.textSecondary,
-    marginBottom: spacing.lg,
-    paddingBottom: spacing.lg,
+  introOutroSection: {
+    marginBottom: spacing.xl,
+    paddingBottom: spacing.xl,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+  },
+  introOutroText: {
+    fontSize: typography.base,
+    color: colors.textPrimary,
+    lineHeight: typography.base * 1.7,
+    fontStyle: 'italic',
   },
   responseSection: { marginBottom: spacing.xl },
   responsePromptLabel: {

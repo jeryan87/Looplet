@@ -6,6 +6,10 @@ export interface Letter {
   loop_id: string;
   status: 'draft' | 'sent';
   prompt_responses: Record<string, string>; // { p2: "text...", p7: "text..." }
+  intro: string;
+  outro: string;
+  show_intro: boolean;
+  show_outro: boolean;
   sent_at: string | null;
   created_at: string;
 }

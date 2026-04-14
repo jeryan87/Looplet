@@ -9,7 +9,6 @@ interface PhotoUrl {
 export function buildEmailHtml(
   letter: Letter,
   loop: Loop,
-  recipientName: string,
   photoUrls: PhotoUrl[]
 ): string {
   const date = new Date().toLocaleDateString('en-US', {
@@ -19,6 +18,41 @@ export function buildEmailHtml(
   });
 
   const childName = loop.child_name ?? 'the little one';
+
+  // Intro block (shown before prompts if enabled and non-empty)
+  const introBlock = letter.show_intro && letter.intro
+    ? `
+      <tr>
+        <td style="padding: 0 0 24px 0;">
+          <p style="margin: 0; font-size: 17px; line-height: 1.7; color: #1A1A1A;
+                     font-family: Georgia, serif; font-style: italic; white-space: pre-wrap;">
+            ${escapeHtml(letter.intro)}
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 0 0 24px 0; border-bottom: 1px solid #E8E0D5;"></td>
+      </tr>
+      <tr><td style="padding: 0 0 8px 0;"></td></tr>
+    `
+    : '';
+
+  // Outro block (shown after prompts if enabled and non-empty)
+  const outroBlock = letter.show_outro && letter.outro
+    ? `
+      <tr>
+        <td style="padding: 0 0 8px 0; border-top: 1px solid #E8E0D5;"></td>
+      </tr>
+      <tr>
+        <td style="padding: 24px 0 0 0;">
+          <p style="margin: 0; font-size: 17px; line-height: 1.7; color: #1A1A1A;
+                     font-family: Georgia, serif; font-style: italic; white-space: pre-wrap;">
+            ${escapeHtml(letter.outro)}
+          </p>
+        </td>
+      </tr>
+    `
+    : '';
 
   // Build prompt sections in prompt order (p1 → p10)
   const promptSections = PROMPTS
@@ -96,22 +130,13 @@ export function buildEmailHtml(
             </td>
           </tr>
 
-          <!-- Greeting -->
+          <!-- Body sections -->
           <tr>
             <td style="padding: 32px 40px 0 40px;">
-              <p style="margin: 0 0 28px 0; font-size: 16px; color: #6B6560;
-                         font-family: Georgia, serif; border-bottom: 1px solid #E8E0D5;
-                         padding-bottom: 24px;">
-                Hi ${escapeHtml(recipientName)},
-              </p>
-            </td>
-          </tr>
-
-          <!-- Prompt sections -->
-          <tr>
-            <td style="padding: 0 40px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${introBlock}
                 ${promptSections}
+                ${outroBlock}
                 ${photoGrid}
               </table>
             </td>
