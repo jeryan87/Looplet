@@ -23,6 +23,7 @@ export type MainStackParamList = {
 // Letters tab stack
 export type LettersStackParamList = {
   Archive: undefined;
+  ArchiveRead: { letterId: string };
 };
 
 // Settings tab stack

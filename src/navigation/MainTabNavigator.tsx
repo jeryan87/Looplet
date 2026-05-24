@@ -12,6 +12,7 @@ import IntroOutroScreen from '../screens/main/IntroOutroScreen';
 import PreviewScreen from '../screens/main/PreviewScreen';
 import SendScreen from '../screens/main/SendScreen';
 import ArchiveScreen from '../screens/main/ArchiveScreen';
+import ArchiveReadScreen from '../screens/main/ArchiveReadScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -48,9 +49,11 @@ function LettersStackNavigator() {
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },
+        animation: 'slide_from_right',
       }}
     >
       <LettersStack.Screen name="Archive" component={ArchiveScreen} />
+      <LettersStack.Screen name="ArchiveRead" component={ArchiveReadScreen} />
     </LettersStack.Navigator>
   );
 }
