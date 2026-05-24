@@ -74,11 +74,17 @@ Deno.serve(async (req: Request) => {
       month: 'long', day: 'numeric', year: 'numeric',
     });
 
+    // Generate share token so recipients can view the letter in a browser
+    const shareToken = crypto.randomUUID();
+    await supabase.from('letters').update({ share_token: shareToken }).eq('id', letterId);
+    const viewInBrowserUrl = `${SUPABASE_URL}/functions/v1/view-letter?token=${shareToken}`;
+
+    const html = buildEmailHtml(letter, loop, photoUrls, date, viewInBrowserUrl);
+
     type SendResult = { ok: true } | { ok: false; email: string; status: number; body: string };
 
     const sendResults: SendResult[] = await Promise.all(
       recipients.map(async (recipient: { name: string; email: string }): Promise<SendResult> => {
-        const html = buildEmailHtml(letter, loop, photoUrls, date);
         const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
@@ -132,7 +138,11 @@ function json(body: unknown, status = 200): Response {
 }
 
 // ── Inline email template ────────────────────────────────────────────────────
-// Keep this in sync with src/email/template.ts (can't import across Deno boundary).
+// SYNC: Last synced with src/email/template.ts on 2026-05-24.
+// Changes here must also be made in:
+//   - supabase/functions/view-letter/index.ts  (same, but viewInBrowserUrl always omitted)
+// NOTE: buildEmailHtml here accepts `date` as a param (unlike template.ts which computes it).
+// Cannot import across Deno boundary — keep these files in sync manually.
 
 const PROMPTS: Array<{ id: string; text: string }> = [
   { id: 'p1', text: 'Something {name} learned this week' },
@@ -157,40 +167,28 @@ function buildEmailHtml(
   },
   loop: { name: string; child_name: string | null; child_pronoun: string },
   photoUrls: Array<{ url: string }>,
-  date: string
+  date: string,
+  viewInBrowserUrl?: string
 ): string {
   const childName = loop.child_name ?? 'the little one';
 
-  // Intro block (shown before prompts if enabled and non-empty)
   const introBlock = letter.show_intro && letter.intro
     ? `
       <tr>
-        <td style="padding: 0 0 24px 0;">
-          <p style="margin: 0; font-size: 17px; line-height: 1.7; color: #1A1A1A;
-                     font-family: Georgia, serif; font-style: italic; white-space: pre-wrap;">
-            ${escapeHtml(letter.intro)}
-          </p>
+        <td style="padding: 0 0 32px 0;">
+          <p style="margin: 0; font-size: 17px; line-height: 1.8; color: #222222;
+                     font-family: Georgia, serif; white-space: pre-wrap;">${escapeHtml(letter.intro)}</p>
         </td>
       </tr>
-      <tr>
-        <td style="padding: 0 0 24px 0; border-bottom: 1px solid #E8E0D5;"></td>
-      </tr>
-      <tr><td style="padding: 0 0 8px 0;"></td></tr>
     `
     : '';
 
-  // Outro block (shown after prompts if enabled and non-empty)
   const outroBlock = letter.show_outro && letter.outro
     ? `
       <tr>
-        <td style="padding: 0 0 8px 0; border-top: 1px solid #E8E0D5;"></td>
-      </tr>
-      <tr>
-        <td style="padding: 24px 0 0 0;">
-          <p style="margin: 0; font-size: 17px; line-height: 1.7; color: #1A1A1A;
-                     font-family: Georgia, serif; font-style: italic; white-space: pre-wrap;">
-            ${escapeHtml(letter.outro)}
-          </p>
+        <td style="padding: 32px 0 0 0;">
+          <p style="margin: 0; font-size: 17px; line-height: 1.8; color: #222222;
+                     font-family: Georgia, serif; white-space: pre-wrap;">${escapeHtml(letter.outro)}</p>
         </td>
       </tr>
     `
@@ -205,35 +203,31 @@ function buildEmailHtml(
       const response = letter.prompt_responses[p.id];
       return `
         <tr>
-          <td style="padding: 0 0 32px 0;">
-            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; text-transform: uppercase;
-                       letter-spacing: 1px; color: #9E9892; font-family: Georgia, serif;">
+          <td style="padding: 0 0 40px 0;">
+            <p style="margin: 0 0 8px 0; font-size: 12px; font-weight: 600; color: #4A6741;
+                       font-family: -apple-system, Helvetica, sans-serif;">
               ${promptText}
             </p>
-            <p style="margin: 0; font-size: 17px; line-height: 1.7; color: #1A1A1A;
-                       font-family: Georgia, serif; white-space: pre-wrap;">
-              ${escapeHtml(response)}
-            </p>
+            <p style="margin: 0; font-size: 17px; line-height: 1.8; color: #222222;
+                       font-family: Georgia, serif; white-space: pre-wrap;">${escapeHtml(response)}</p>
           </td>
         </tr>
       `;
     })
     .join('');
 
-  const photoGrid = photoUrls.length > 0
+  const photoGrid = buildPhotoGrid(photoUrls);
+
+  const viewInBrowserRow = viewInBrowserUrl
     ? `
       <tr>
-        <td style="padding: 0 0 32px 0;">
-          <table width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              ${photoUrls.map((p) => `
-                <td style="padding: 4px; width: ${Math.floor(100 / Math.min(photoUrls.length, 3))}%;">
-                  <img src="${p.url}" alt="" width="100%"
-                       style="display: block; border-radius: 8px; object-fit: cover;" />
-                </td>
-              `).join('')}
-            </tr>
-          </table>
+        <td align="center" style="padding: 0 16px 12px 16px;">
+          <p style="margin: 0; font-size: 12px; color: #9E9892;
+                     font-family: -apple-system, Helvetica, sans-serif;">
+            Having trouble reading this?
+            <a href="${viewInBrowserUrl}"
+               style="color: #4A6741; text-decoration: underline;">View in browser</a>
+          </p>
         </td>
       </tr>
     `
@@ -246,25 +240,37 @@ function buildEmailHtml(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(loop.name)}</title>
+  <style>
+    /* Web view only — email clients ignore this block */
+    body { -webkit-font-smoothing: antialiased; }
+    @media (max-width: 600px) {
+      .email-card { border-radius: 0 !important; }
+      .email-body-pad { padding: 24px 24px 0 24px !important; }
+      .email-header-pad { padding: 24px !important; }
+      .email-footer-pad { padding: 0 24px 24px 24px !important; }
+    }
+  </style>
 </head>
 <body style="margin: 0; padding: 0; background-color: #F5F0EA; font-family: Georgia, serif;">
   <table width="100%" cellpadding="0" cellspacing="0" border="0"
          style="background-color: #F5F0EA; padding: 32px 16px;">
+    ${viewInBrowserRow}
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" class="email-card"
                style="max-width: 560px; background-color: #FFFFFF; border-radius: 12px;
                       overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.06);">
 
           <!-- Header -->
           <tr>
-            <td style="background-color: #4A6741; padding: 32px 40px 28px 40px;">
-              <p style="margin: 0 0 4px 0; font-size: 13px; color: rgba(255,255,255,0.7);
-                         font-family: -apple-system, sans-serif; letter-spacing: 0.5px;">
+            <td class="email-header-pad"
+                style="background-color: #4A6741; padding: 32px 40px 32px 40px;">
+              <p style="margin: 0 0 6px 0; font-size: 13px; color: rgba(255,255,255,0.65);
+                         font-family: -apple-system, Helvetica, sans-serif; letter-spacing: 0.3px;">
                 ${escapeHtml(date)}
               </p>
-              <h1 style="margin: 0; font-size: 26px; font-weight: 700; color: #FFFFFF;
-                          font-family: Georgia, serif; line-height: 1.2;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #FFFFFF;
+                          font-family: Georgia, serif; line-height: 1.25;">
                 ${escapeHtml(loop.name)}
               </h1>
             </td>
@@ -272,7 +278,7 @@ function buildEmailHtml(
 
           <!-- Body sections -->
           <tr>
-            <td style="padding: 32px 40px 0 40px;">
+            <td class="email-body-pad" style="padding: 36px 40px 4px 40px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${introBlock}
                 ${promptSections}
@@ -284,13 +290,27 @@ function buildEmailHtml(
 
           <!-- Footer -->
           <tr>
-            <td style="padding: 24px 40px 32px 40px; border-top: 1px solid #E8E0D5;">
-              <p style="margin: 0; font-size: 12px; color: #9E9892;
-                         font-family: -apple-system, sans-serif; line-height: 1.6;">
-                You're receiving this because someone added you to their Looplet newsletter.
-                <br />
-                To unsubscribe, reply to this email with "unsubscribe" in the subject.
-              </p>
+            <td class="email-footer-pad"
+                style="background-color: #F5F0EA; padding: 0 40px 28px 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="padding: 20px 0 16px 0; border-top: 1px solid #E8E0D5;"></td>
+                </tr>
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 8px 0; font-size: 12px; color: #9E9892;
+                               font-family: -apple-system, Helvetica, sans-serif; line-height: 1.6;">
+                      You're receiving this because someone added you to their family newsletter.
+                      To unsubscribe, reply with &quot;unsubscribe&quot; in the subject line.
+                    </p>
+                    <p style="margin: 0; font-size: 11px; color: #C4BDB6;
+                               font-family: -apple-system, Helvetica, sans-serif;">
+                      Sent with <a href="https://looplet.app"
+                                   style="color: #C4BDB6; text-decoration: none;">Looplet</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
@@ -301,6 +321,72 @@ function buildEmailHtml(
 </body>
 </html>
   `.trim();
+}
+
+function buildPhotoGrid(photoUrls: Array<{ url: string }>): string {
+  if (photoUrls.length === 0) return '';
+
+  if (photoUrls.length === 1) {
+    return `
+      <tr>
+        <td style="padding: 0 0 32px 0;">
+          <img src="${photoUrls[0].url}" alt="" width="100%"
+               style="display: block; border-radius: 8px; max-height: 340px; object-fit: cover;" />
+        </td>
+      </tr>
+    `;
+  }
+
+  if (photoUrls.length === 2) {
+    return `
+      <tr>
+        <td style="padding: 0 0 32px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td style="padding-right: 4px; width: 49%;">
+                <img src="${photoUrls[0].url}" alt="" width="100%"
+                     style="display: block; border-radius: 8px;" />
+              </td>
+              <td style="padding-left: 4px; width: 49%;">
+                <img src="${photoUrls[1].url}" alt="" width="100%"
+                     style="display: block; border-radius: 8px;" />
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    `;
+  }
+
+  // 3+ photos: first photo is a full-width hero, rest form a strip below
+  const stripPhotos = photoUrls.slice(1);
+  const stripWidth = Math.floor(100 / stripPhotos.length);
+  const stripCells = stripPhotos.map((p, i) => {
+    const pl = i > 0 ? 'padding-left: 4px; ' : '';
+    const pr = i < stripPhotos.length - 1 ? 'padding-right: 4px; ' : '';
+    return `
+      <td style="${pl}${pr}width: ${stripWidth}%;">
+        <img src="${p.url}" alt="" width="100%"
+             style="display: block; border-radius: 0 0 4px 4px;" />
+      </td>
+    `;
+  }).join('');
+
+  return `
+    <tr>
+      <td style="padding: 0 0 4px 0;">
+        <img src="${photoUrls[0].url}" alt="" width="100%"
+             style="display: block; border-radius: 8px 8px 0 0; max-height: 300px; object-fit: cover;" />
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 0 0 32px 0;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>${stripCells}</tr>
+        </table>
+      </td>
+    </tr>
+  `;
 }
 
 function escapeHtml(text: string): string {

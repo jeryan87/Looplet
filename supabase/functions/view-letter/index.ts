@@ -1,26 +1,154 @@
-import { Letter } from '../hooks/useLetter';
-import { Loop } from '../hooks/useLoop';
-import { PROMPTS } from '../constants/prompts';
+// Supabase Edge Function — runs in Deno on Supabase's servers
+// Deploy: Supabase dashboard → Edge Functions → view-letter → Code tab (copy-paste)
+// JWT verification: DISABLED in dashboard → Edge Functions → view-letter → Settings
+// No RESEND_API_KEY needed — this function only reads and renders.
 
-interface PhotoUrl {
-  url: string;
-}
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-export function buildEmailHtml(
-  letter: Letter,
-  loop: Loop,
-  photoUrls: PhotoUrl[],
-  viewInBrowserUrl?: string
-): string {
-  const date = new Date().toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+Deno.serve(async (req: Request) => {
+  const url = new URL(req.url);
+  const token = url.searchParams.get('token');
+
+  if (!token) {
+    return htmlError('Invalid link', 'This link is missing a token. Please check the email you received.');
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const { data: rows } = await supabase
+    .from('letters')
+    .select('*, loops(*), letter_photos(storage_path, sort_order)')
+    .eq('share_token', token)
+    .eq('status', 'sent')
+    .limit(1);
+
+  const letter = rows?.[0] ?? null;
+
+  if (!letter) {
+    return htmlError(
+      'Letter not found',
+      'This link is invalid or has expired. Please check the email you received.'
+    );
+  }
+
+  const loop = letter.loops;
+
+  const photos: Array<{ storage_path: string; sort_order: number }> =
+    (letter.letter_photos ?? []).sort(
+      (a: { sort_order: number }, b: { sort_order: number }) => a.sort_order - b.sort_order
+    );
+
+  const photoUrls = photos.map((p) => {
+    const { data } = supabase.storage.from('letter-photos').getPublicUrl(p.storage_path);
+    return { url: data.publicUrl };
   });
 
+  const date = letter.sent_at
+    ? new Date(letter.sent_at).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : new Date().toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+  // viewInBrowserUrl intentionally omitted — no recursive "View in browser" on the web page
+  const html = buildEmailHtml(letter, loop, photoUrls, date);
+
+  return new Response(
+    new Blob([html], { type: 'text/html; charset=utf-8' }),
+    { status: 200 }
+  );
+});
+
+function htmlError(title: string, message: string): Response {
+  const body = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Georgia, serif;
+      background: #F5F0EA;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .box {
+      background: #fff;
+      border-radius: 12px;
+      padding: 48px 40px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+    }
+    h1 { color: #1A1A1A; font-size: 22px; margin-bottom: 12px; line-height: 1.3; }
+    p { color: #6B6560; font-size: 16px; line-height: 1.6; font-family: -apple-system, Helvetica, sans-serif; }
+    .dot { color: #4A6741; font-size: 28px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="dot">&#9679;</div>
+    <h1>${title}</h1>
+    <p>${message}</p>
+  </div>
+</body>
+</html>`;
+
+  return new Response(
+    new Blob([body], { type: 'text/html; charset=utf-8' }),
+    { status: 404 }
+  );
+}
+
+// ── Inline email template ────────────────────────────────────────────────────
+// SYNC: Last synced with src/email/template.ts on 2026-05-24.
+// Changes here must also be made in:
+//   - supabase/functions/send-letter/index.ts  (same signature + viewInBrowserUrl param)
+// NOTE: buildEmailHtml here accepts `date` as a param (unlike template.ts which computes it).
+// Cannot import across Deno boundary — keep these files in sync manually.
+
+const PROMPTS: Array<{ id: string; text: string }> = [
+  { id: 'p1', text: 'Something {name} learned this week' },
+  { id: 'p2', text: 'A funny moment we want to remember' },
+  { id: 'p3', text: 'What {name} is currently obsessed with' },
+  { id: 'p4', text: "A challenge we're working through" },
+  { id: 'p5', text: 'Something that surprised us' },
+  { id: 'p6', text: 'A milestone, big or small' },
+  { id: 'p7', text: 'What made {name} laugh' },
+  { id: 'p8', text: 'Something {name} said or did for the first time' },
+  { id: 'p9', text: 'How {name} is changing lately' },
+  { id: 'p10', text: 'A moment we want to remember forever' },
+];
+
+function buildEmailHtml(
+  letter: {
+    prompt_responses: Record<string, string>;
+    intro: string;
+    outro: string;
+    show_intro: boolean;
+    show_outro: boolean;
+  },
+  loop: { name: string; child_name: string | null; child_pronoun: string },
+  photoUrls: Array<{ url: string }>,
+  date: string,
+  viewInBrowserUrl?: string
+): string {
   const childName = loop.child_name ?? 'the little one';
 
-  // Intro block — regular text, no italic, no divider line
   const introBlock = letter.show_intro && letter.intro
     ? `
       <tr>
@@ -32,7 +160,6 @@ export function buildEmailHtml(
     `
     : '';
 
-  // Outro block — regular text, no italic, no divider line
   const outroBlock = letter.show_outro && letter.outro
     ? `
       <tr>
@@ -44,7 +171,6 @@ export function buildEmailHtml(
     `
     : '';
 
-  // Prompt sections — small green label above response, no nested tables
   const promptSections = PROMPTS
     .filter((p) => letter.prompt_responses[p.id])
     .map((p) => {
@@ -118,7 +244,7 @@ export function buildEmailHtml(
                 style="background-color: #4A6741; padding: 32px 40px 32px 40px;">
               <p style="margin: 0 0 6px 0; font-size: 13px; color: rgba(255,255,255,0.65);
                          font-family: -apple-system, Helvetica, sans-serif; letter-spacing: 0.3px;">
-                ${date}
+                ${escapeHtml(date)}
               </p>
               <h1 style="margin: 0; font-size: 28px; font-weight: 700; color: #FFFFFF;
                           font-family: Georgia, serif; line-height: 1.25;">
@@ -174,8 +300,7 @@ export function buildEmailHtml(
   `.trim();
 }
 
-// Photo grid — 1 photo: full-width hero; 2 photos: equal columns; 3+: hero + strip
-function buildPhotoGrid(photoUrls: PhotoUrl[]): string {
+function buildPhotoGrid(photoUrls: Array<{ url: string }>): string {
   if (photoUrls.length === 0) return '';
 
   if (photoUrls.length === 1) {

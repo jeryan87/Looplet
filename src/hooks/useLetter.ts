@@ -12,6 +12,7 @@ export interface Letter {
   show_outro: boolean;
   sent_at: string | null;
   created_at: string;
+  share_token: string | null;
 }
 
 export interface LetterPhoto {

@@ -123,6 +123,11 @@ CREATE TABLE IF NOT EXISTS public.letters (
   status           TEXT NOT NULL DEFAULT 'draft'
                      CHECK (status IN ('draft', 'sent')),
   prompt_responses JSONB NOT NULL DEFAULT '{}'::jsonb,
+  intro            TEXT NOT NULL DEFAULT '',
+  outro            TEXT NOT NULL DEFAULT '',
+  show_intro       BOOLEAN NOT NULL DEFAULT false,
+  show_outro       BOOLEAN NOT NULL DEFAULT false,
+  share_token      TEXT UNIQUE,
   sent_at          TIMESTAMPTZ,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
